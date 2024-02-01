@@ -1002,7 +1002,7 @@ xloadcols(void)
 int
 xgetcolor(int x, unsigned char *r, unsigned char *g, unsigned char *b)
 {
-	if (!BETWEEN(x, 0, dc.collen))
+	if (!BETWEEN(x, 0, dc.collen - 1))
 		return 1;
 
 	*r = dc.col[x].color.red >> 8;
@@ -1017,7 +1017,7 @@ xsetcolorname(int x, const char *name)
 {
 	Color ncolor;
 
-	if (!BETWEEN(x, 0, dc.collen))
+	if (!BETWEEN(x, 0, dc.collen - 1))
 		return 1;
 
 	if (!xloadcolor(x, name, &ncolor))
@@ -1650,7 +1650,7 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
 	HbTransformData shaped = { 0 };
 
 	/* Initial values. */
-	mode = prevmode = glyphs[0].mode;
+	mode = prevmode = glyphs[0].mode & ~ATTR_WRAP;
 	xresetfontsettings(mode, &font, &frcflags);
 	#endif // LIGATURES_PATCH
 
@@ -1667,7 +1667,7 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
 		rune = g.u;
 		mode = g.mode;
 		#elif LIGATURES_PATCH
-		mode = glyphs[i].mode;
+		mode = glyphs[i].mode & ~ATTR_WRAP;
 		#else
 		rune = glyphs[i].u;
 		mode = glyphs[i].mode;
@@ -2949,28 +2949,19 @@ void
 xfinishdraw(void)
 {
 	#if SIXEL_PATCH
-	ImageList *im;
+	ImageList *im, *next;
 	XGCValues gcvalues;
 	GC gc;
 	#endif // SIXEL_PATCH
 
 	#if SIXEL_PATCH
-	for (im = term.images; im; im = im->next) {
-		if (term.images == NULL) {
-			/* last image was deleted, bail out */
-			break;
-		}
+	for (im = term.images; im; im = next) {
+		/* get the next image here, because delete_image() will delete the current image */
+		next = im->next;
 
 		if (im->should_delete) {
 			delete_image(im);
-
-			/* prevent the next iteration from accessing an invalid image pointer */
-			im = term.images;
-			if (im == NULL) {
-				break;
-			} else {
-				continue;
-			}
+			continue;
 		}
 
 		if (!im->pixmap) {
@@ -3005,7 +2996,8 @@ xfinishdraw(void)
 		}
 
 		memset(&gcvalues, 0, sizeof(gcvalues));
-		gc = XCreateGC(xw.dpy, xw.win, 0, &gcvalues);
+		gcvalues.graphics_exposures = False;
+		gc = XCreateGC(xw.dpy, xw.win, GCGraphicsExposures, &gcvalues);
 
 		#if ANYSIZE_PATCH
 		XCopyArea(xw.dpy, (Drawable)im->pixmap, xw.buf, gc, 0, 0, im->width, im->height, win.hborderpx + im->x * win.cw, win.vborderpx + im->y * win.ch);
